@@ -2,22 +2,24 @@ Db = require 'db'
 Dom = require 'dom'
 Obs = require 'obs'
 Server = require 'server'
+Time = require 'time'
 Form = require 'form'
 Page = require 'page'
 Plugin = require 'plugin'
+Social = require 'social'
 Ui = require 'ui'
 Colors = Plugin.colors()
 {tr} = require 'i18n'
 
 
 dayNames = [
-	tr 'Sun'
-	tr 'Mon'
-	tr 'Tue'
-	tr 'Wed'
-	tr 'Thu'
-	tr 'Fri'
-	tr 'Sat'
+	tr 'Sunday'
+	tr 'Monday'
+	tr 'Tuesday'
+	tr 'Wednesday'
+	tr 'Thursday'
+	tr 'Friday'
+	tr 'Saturday'
 ]
 
 monthNames = [
@@ -63,7 +65,9 @@ plusIcon = (state) !->
 		Dom.style
 			fontWeight: 'bold'
 			color: Plugin.colors().highlight
-		Dom.text " +"+(Math.abs(state)-1)
+		Dom.span !->
+			Dom.style paddingLeft: '4px'
+			Dom.text "+"+(Math.abs(state)-1)
 
 setState = (info,userId,newState) !->
 	Server.sync 'eat', info.key(), newState, userId, !->
@@ -83,13 +87,14 @@ nextState = (info,userId) ->
 	cookId = info.get('cook')
 	state = info.get('eat',userId)
 	state = -state if cookId==userId
-	setState info, userId, if !state? then (if cookId then 1 else -1) else if state<0 then -state else if state>0 then 0 else null
+	#setState info, userId, if !state? then (if cookId then 1 else -1) else if state<0 then -state else if state>0 then 0 else null
+	setState info, userId, if !state? then 1 else if state<0 then null else if state>0 then 0 else (if cookId then null else -1)
 
 plusState = (info,userId) ->
 	return unless editOther(plusState,info,userId)
-	buttons = []
-	for i in [0..4]
-		buttons.push i, '+'+i
+	buttons = ['0', tr("No")]
+	for i in [1..4]
+		buttons.push i, i
 	chosen = (val) !->
 		if val?
 			state = getState info, userId
@@ -99,50 +104,77 @@ plusState = (info,userId) ->
 iconDiv = (func) !->
 	Dom.div !->
 		Dom.style
-			padding: '6px 2px 6px 8px'
+			Box: 'middle center'
+			padding: '14px 12px'
 			minWidth: '32px'
-			minHeight: '24px'
-			lineHeight: '24px'
-			textAlign: 'center'
+			minHeight: '28px'
 		func?()
 
 offset = (new Date).getTimezoneOffset()
-today = 0|((Plugin.time()-offset*60000)/86400)
+today = 0|((Plugin.time()-offset*60)/86400)
+log 'today', today
 
 renderDayItem = (day) !->
 	if typeof day=='object'
 		info = day
 		day = 0|info.key()
 	else
-		info = Db.shared.ref('days', day) || new Obs.Value()
+		info = Db.shared.ref('days', day) || new Obs.Value(null,day)
 
 	userId = Plugin.userId()
 
-	Dom.section !->
-
+	Ui.item !->
 		Dom.style
 			Box: "middle"
-
-		cookId = info.get('cook')
-		Ui.avatar (Plugin.userAvatar cookId if cookId)
+			padding: 0
 
 		Dom.div !->
-			Dom.style
-				Flex: 1
-				fontWeight: (if day==today then 'bold' else 'normal')
-			Dom.text getDayName(day)
+			Dom.style Box: 'middle', Flex: 1, padding: '8px'
+			cookId = info.get('cook')
+			if cookId
+				Ui.avatar (Plugin.userAvatar cookId)
+			else
+				Dom.div !->
+					Dom.style
+						Box: 'middle center'
+						height: '38px'
+						width: '38px'
+						borderRadius: '38px'
+						margin: '0 4px 0 0'
+						border: '1px solid #ddd'
+						fontSize: '65%'
+						fontWeight: 'bold'
+						color: '#ccc'
+						textTransform: 'uppercase'
+						textAlign: 'center'
+					Dom.text tr("No")
+					Dom.br()
+					Dom.text tr("Chef")
 
 			Dom.div !->
-				cnt = 0
-				for k,v of info.get('eat')
-					cnt += v
-					
 				Dom.style
-					fontStyle: 'italic'
-					fontSize: '80%'
-					fontWeight: 'normal'
-					color: if cnt or cookId then 'inherit' else '#aaa'
-				Dom.text if cookId then tr("diner à la %1 for %2",Plugin.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
+					Flex: 1
+					fontWeight: (if day==today then 'bold' else 'normal')
+					color: (if day==today then '#000' else 'inherit')
+				Dom.text getDayName(day)
+				
+				if unread = Social.newComments(day)
+					Ui.unread unread, null, {marginLeft: '4px'}
+
+				Dom.div !->
+					cnt = 0
+					for k,v of info.get('eat')
+						cnt += +v
+						
+					Dom.style
+						fontSize: '80%'
+						fontWeight: 'normal'
+						color: if cnt or cookId then 'inherit' else '#aaa'
+					Dom.text if cookId then tr("%1 cooking for %2",Plugin.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
+
+			Dom.onTap !->
+				Page.nav ['day',day]
+
 
 		Form.vSep()
 
@@ -154,92 +186,91 @@ renderDayItem = (day) !->
 				cb: !-> nextState info, userId
 				longTap: !-> plusState info, userId
 			
-		Dom.onTap !->
-			Page.nav ['day',day]
-
 
 renderDayPage = (day) !->
 	Page.setTitle getDayName(day)
 
-	info = Db.shared.ref('days', day) || new Obs.Value()
+	info = Db.shared.ref('days', day) || new Obs.Value(null,day)
 	userId = Plugin.userId()
 		
-	Dom.section !->
-		Dom.div !->
-			Dom.style Box: "middle", padding: '8px'
+	Dom.style padding: 0 # style the main element
+	Dom.div !->
+		Dom.style backgroundColor: '#f8f8f8', borderBottom: '2px solid #ccc', paddingBottom: '8px'
+
+		Form.box !->
+			Dom.text tr "Your status"
 			Dom.div !->
-				Dom.style Flex: true
-				Dom.text tr "Your response"
-				Dom.div !->
-					Dom.style
-						fontSize: '75%'
-						lineHeight: '1.2em'
-					state = getState(info, userId)
-					Dom.text if state<0
-							tr "Yes, and I'm cooking"
-						else if state>0
-							tr "Yes, please"
-						else if state==0
-							tr "No, thanks"
-						else
-							tr "Undecided"
+				state = getState(info, userId)
+				Dom.text if state<0
+						tr "Hungry, and I'm cooking"
+					else if state>0
+						tr "Hungry"
+					else if state==0
+						tr "Not joining dinner"
+					else
+						tr "Undecided"
 
 			iconDiv !->
+				Dom.style position: 'absolute', right: '8px', top: '5px'
 				stateIcon getState(info, userId)
 			Dom.onTap !-> nextState info, userId
-	
+
 		Form.sep()
-		
-		Dom.div !->
-			Dom.style Box: "middle", padding: '8px'
+
+		Form.box !->
+			#Dom.style Box: "middle", padding: '0 8px'
+			Dom.text tr "Your guests"
+			state = getState(info, userId)
 			Dom.div !->
-				Dom.style Flex: true
-				Dom.text tr "Bringing guests?"
+				#Dom.style Flex: true
+				#Dom.text tr "Bringing guests?"
+				if state<-1 or state>1
+					Dom.text tr "Bringing %1 guest|s", (Math.abs(state)-1)
+				else
+					Dom.text tr "Not bringing guests"
 			iconDiv !->
-				plusIcon getState(info, userId)
+				Dom.style position: 'absolute', right: '8px', top: '5px'
+				plusIcon state
 			Dom.onTap !-> plusState info, userId
 
-		Dom.div !->
-	
-	Dom.section !->
+		Form.sep()
+
+		
 		cookId = info.get('cook')
-		Dom.h2 if cookId then tr("Chef %1", Plugin.userName(cookId)) else tr("No chef yet")
+		Form.label !->
+			Dom.style marginTop: '20px'
+			Dom.text if cookId then tr("Chef %1", Plugin.userName(cookId)) else tr("No chef yet")
 		Dom.div !->
-			Dom.style
-				Box: "middle center"
+			Dom.style margin: '4px 8px 12px 8px'
 			if cookId
-				Ui.avatar Plugin.userAvatar(cookId)
-				Dom.div !-> Dom.style width: '8px'
-				Dom.div !->
-					Dom.style Flex: 1
-					Form.input
-						name: 'cost'
-						value: info.func('cost')
-						text: tr 'total cost'
-						format: renderCurrency
-						onSave: (val) !->
-							val = parseFloat(val.replace(',','.'))
-							val = null if isNaN(val)
-							Server.sync 'cost', info.key(), val, !->
-								info.set 'cost', val
+				Form.input
+					name: 'cost'
+					value: info.func('cost')
+					text: tr 'Total cost'
+					format: renderCurrency
+					onSave: (val) !->
+						val = parseFloat(val.replace(',','.'))
+						val = null if isNaN(val)
+						Server.sync 'cost', info.key(), val, !->
+							info.set 'cost', val
+					inScope: !->
+						Dom.style marginRight: '12px'
 			else
 				Ui.bigButton tr("I'll cook!"), !->
 					state = getState info,userId
 					setState info, userId, -Math.abs(state||1)
 
-	Dom.section !->
 		count = Obs.create 0
-		Dom.h2 !->
+		Form.label !->
 			Dom.text tr("%1 hungry |person|people",count.get())
 
 		Plugin.users.observeEach (user) !->
 			userId2 = 0|user.key()
 			Dom.div !->
-				Dom.style Box: "middle", padding: '8px'
+				Dom.style Box: "middle", padding: '0 8px'
 				Ui.avatar (Plugin.userAvatar userId2)
-				Dom.div !-> Dom.style width: '8px'
 				Dom.div !->
-					Dom.style Flex: true
+					Dom.style Flex: true, marginLeft: '8px'
 					Dom.text user.get('name')
 				iconDiv !->
 					state = getState info, userId2
@@ -255,19 +286,28 @@ renderDayPage = (day) !->
 		, (user) ->
 			[(if info.peek('eat',user.key()) then 0 else 1), user.peek('name')]
 
-	Dom.section !->
-		Dom.h2 tr 'Comments'
-		require('social').renderComments day, render: (comment) !->
-			if comment.s and comment.u
-				comment.c = Plugin.userName(comment.u) + ": "+ comment.c
-				delete comment.u
+	Social.renderComments day, render: (comment) ->
+		if comment.s and comment.u
+			comment.c = Plugin.userName(comment.u) + ' ' + comment.c
+			delete comment.u
+			Dom.div !->
+				Dom.style margin: '6px 0 6px 56px', fontSize: '70%'
+
+				Dom.span !->
+					Dom.style color: '#999'
+					#Dom.text Plugin.userName(comment.u) + " • "
+					Time.deltaText comment.t
+					Dom.text " • "
+
+				Dom.text comment.c
+			true # We're rendering these type of comments
 
 renderBalances = !->
 	stats = Obs.create()
 	merge = (delta,minus) ->
 		for k,v of delta
 			k = k.split('/')
-			k.push (stats.get.apply(stats,k)||0) + (if minus then -v else v)
+			k.push (stats.peek.apply(stats,k)||0) + (if minus then -v else v)
 			stats.set.apply stats, k
 
 	Db.shared.observeEach 'days', (info) !->
@@ -351,26 +391,28 @@ exports.render = !->
 	if what=='history'
 		items = Obs.create()
 		# show last week, plus earlier days that have a cook
-		for day in [today-1..today-7] by -1
-			renderDayItem day
-		Db.shared.dirty().observeEach 'days', (info) !->
-			day = 0|info.key()
-			if day<today-7 and info.get('cook')
-				renderDayItem info
-				items.set true
-		, (day) -> -day.key()
-		Obs.observe !->
-			Ui.emptyText tr("No earlier items") unless items.get()
+		Ui.list !->
+			for day in [today-1..today-7] by -1
+				renderDayItem day
+			Db.shared.dirty().observeEach 'days', (info) !->
+				day = 0|info.key()
+				if day<today-7 and info.get('cook')
+					renderDayItem info
+					items.set true
+			, (day) -> -day.key()
+			Obs.observe !->
+				Ui.emptyText tr("No earlier items") unless items.get()
 		return
 
-	Db.personal.observeEach 'open', (info) !->
-		day = 0|info.key()
-		if day < (today-1)
-			renderDayItem info
-	, (day) -> 0|day.key()
+	Ui.list !->
+		Db.personal.observeEach 'open', (info) !->
+			day = 0|info.key()
+			if day < (today-1)
+				renderDayItem info
+		, (day) -> 0|day.key()
 
-	for day in [today-1...today+14] by 1
-		renderDayItem day
+		for day in [today-1...today+14] by 1
+			renderDayItem day
 
 	Page.setFooter
 		label: tr "Balances"
@@ -388,5 +430,5 @@ exports.renderConfig = exports.renderSettings = !->
 		require('datepicker.js').time
 			name: 'deadline'
 			gmt: true
-			value: Db.shared.get('deadline')
+			value: Db.shared?.get('deadline') || 16.5*3600
 	

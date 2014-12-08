@@ -5,8 +5,9 @@ Plugin = require 'plugin'
 
 
 exports.onConfig = exports.onInstall = (config) !->
-	Db.shared.set 'deadline', config.deadline
-	setTimers()
+	if config?
+		Db.shared.set 'deadline', config.deadline
+		setTimers()
 
 exports.onUpgrade = !->
 	setTimers()
@@ -26,7 +27,7 @@ setTimers = (extraTime=0) !->
 		Timer.set (next-time)*1000, type
 
 exports.remind = !->
-	day = Plugin.time()/86400
+	day = 0|(Plugin.time()/86400)
 	eat = Db.shared.get('days',day,'eat') || {}
 	include = []
 	for userId in Plugin.userIds() when !eat[userId]?
@@ -39,7 +40,7 @@ exports.remind = !->
 	setTimers 300
 
 exports.deadline = !->
-	day = Plugin.time()/86400
+	day = 0|(Plugin.time()/86400)
 	cookId = Db.shared.get('days',day,'cook')
 	eaters = []
 	cnt = 0
@@ -122,7 +123,7 @@ exports.client_cost = (day, value) !->
 	logComment day, 'cost', (newC, oldC) ->
 		oldValue = oldC._o if oldC
 		newC._o = oldValue
-		tr "cost %1 → %2",
+		tr "entered a total cost %1 of %2",
 			if oldValue? then fc(oldValue) else ""
 			if value? then fc(value) else "??"
 
