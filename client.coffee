@@ -73,7 +73,7 @@ setState = (info,userId,newState) !->
 	Server.sync 'eat', info.key(), newState, userId, !->
 		cookId = info.get('cook')
 		info.set 'cook', if newState<0 then (if cookId then cookId else userId) else (if cookId==userId then null else cookId)
-		info.set 'eat', userId, if newState<0 then -newState else newState
+		info.set 'eat', userId, if newState<0 then -newState else (if !newState? then newState else +newState)
 
 editingOthers = {}
 editOther = (func,info,userId) ->
@@ -264,6 +264,7 @@ renderDayPage = (day) !->
 		Form.label !->
 			Dom.text tr("%1 hungry |person|people",count.get())
 
+		# fix this for days that have passed: include eaters that have left the happening since
 		Plugin.users.observeEach (user) !->
 			userId2 = 0|user.key()
 			Dom.div !->
@@ -315,7 +316,7 @@ renderBalances = !->
 		info = info.get()
 		return unless info.eat and cook = info.cook
 		eaters = 0
-		eaters += v for k,v of info.eat
+		eaters += +v for k,v of info.eat when v
 		return unless eaters>1
 		if info.cost?
 			for k,v of info.eat when v
@@ -344,13 +345,15 @@ renderBalances = !->
 		Dom.section !->
 			Dom.style Box: "middle"
 
-			Ui.avatar (Plugin.userAvatar stat.key())
-
-			Dom.div !-> Dom.style width: '8px'
-
 			Dom.div !->
 				Dom.style Flex: 1
-				Dom.h2 Plugin.userName(stat.key())
+				Dom.div !->
+					Dom.style margin: '-8px -8px -6px', background: '#fff', padding: '8px'
+					Ui.avatar (Plugin.userAvatar stat.key()), !->
+						Dom.style float: 'right'
+					, 32
+					Dom.h2 Plugin.userName(stat.key())
+
 				Dom.div !->
 					Dom.style Box: "middle"
 					renderStat tr("balance"), !->
@@ -361,7 +364,9 @@ renderBalances = !->
 					renderStat tr("chef"), !->
 						cook = stat.get('cook') || 0
 						cmpEat = (stat.get('eat')||0) - (stat.get('cookGuest')||0)
-						Dom.text Math.round(100*cook/(cmpEat||cook)) + '%'
+						perc = Math.round(100*cook/(cmpEat||cook))
+						perc = (if isNaN(perc) then '-' else perc+'%')
+						Dom.text perc
 					renderFlex()
 					renderStat tr("per meal"), !->
 						renderCurrency (stat.get('spent')||0)/(stat.get('fed')||1)

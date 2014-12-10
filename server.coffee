@@ -75,7 +75,7 @@ exports.client_eat = (day, newState, userId) !->
 	cookId = if newState<0 then (if oldCookId then oldCookId else userId) else (if oldCookId==userId then null else oldCookId)
 
 	info.set 'cook', cookId
-	info.set 'eat', userId, if newState<0 then -newState else newState
+	info.set 'eat', userId, if newState<0 then -newState else (if !newState? then newState else +newState)
 
 	if cookId != oldCookId
 		Db.personal(oldCookId).set('open',day,null) if oldCookId
@@ -123,7 +123,9 @@ exports.client_cost = (day, value) !->
 	logComment day, 'cost', (newC, oldC) ->
 		oldValue = oldC._o if oldC
 		newC._o = oldValue
-		tr "entered a total cost %1 of %2",
-			if oldValue? then fc(oldValue) else ""
-			if value? then fc(value) else "??"
-
+		if oldValue?
+			tr "changed total cost from %1 to %2",
+				if value? then fc(value) else "??"
+				fc(oldValue)
+		else
+			tr "entered total cost: %1", if value? then fc(value) else "??"
