@@ -1,3 +1,4 @@
+Util = require 'util.js'
 Db = require 'db'
 Dom = require 'dom'
 Obs = require 'obs'
@@ -38,7 +39,6 @@ monthNames = [
 ]
 						
 renderCurrency = (val) ->
-	Util = require 'util.js'
 	Dom.text Util.formatCurrency val
 
 getDayName = (day) ->
@@ -48,10 +48,14 @@ getDayName = (day) ->
 getState = (info,userId) ->
 	cookId = info.get('cook')
 	state = info.get('eat',userId)
+	state %= 1000 if state? and state isnt ''
 	if cookId==userId then -state else state
 
+getPluginUserIds = ->
+	+uid for uid of Plugin.users.get()
+
 stateIcon = (state) !->
-	icon = if !state? then 'unknown' else if state>0 then 'yes' else if state<0 then 'cook' else 'no'
+	icon = if !state? or state is '' then 'unknown' else if state>0 then 'yes' else if state<0 then 'cook' else 'no'
 	Dom.img !->
 		Dom.prop src: Plugin.resourceUri("eat-#{icon}.png")
 		Dom.style
@@ -73,7 +77,7 @@ setState = (info,userId,newState) !->
 	Server.sync 'eat', info.key(), newState, userId, !->
 		cookId = info.get('cook')
 		info.set 'cook', if newState<0 then (if cookId then cookId else userId) else (if cookId==userId then null else cookId)
-		info.set 'eat', userId, if newState<0 then -newState else (if !newState? then newState else +newState)
+		info.set 'eat', userId, if newState<0 then -newState else (if !newState? or newState is '' then '' else +newState)
 
 editingOthers = {}
 editOther = (func,info,userId) ->
@@ -86,9 +90,9 @@ nextState = (info,userId) ->
 	return unless editOther(nextState,info,userId)
 	cookId = info.get('cook')
 	state = info.get('eat',userId)
+	state %= 1000 if state? and state isnt ''
 	state = -state if cookId==userId
-	#setState info, userId, if !state? then (if cookId then 1 else -1) else if state<0 then -state else if state>0 then 0 else null
-	setState info, userId, if !state? then 1 else if state<0 then null else if state>0 then 0 else (if cookId then null else -1)
+	setState info, userId, if (!state? or state is '') then 1 else if state<0 then '' else if state>0 then 0 else (if cookId then '' else -1)
 
 plusState = (info,userId) ->
 	return unless editOther(plusState,info,userId)
@@ -158,12 +162,10 @@ renderDayItem = (day) !->
 					color: (if day==today then '#000' else 'inherit')
 				Dom.text getDayName(day)
 				
-				if unread = Social.newComments(day)
-					Ui.unread unread, null, {marginLeft: '4px'}
-
 				Dom.div !->
 					cnt = 0
 					for k,v of info.get('eat')
+						v %= 1000 if v isnt ''
 						cnt += +v
 						
 					Dom.style
@@ -171,6 +173,10 @@ renderDayItem = (day) !->
 						fontWeight: 'normal'
 						color: if cnt or cookId then 'inherit' else '#aaa'
 					Dom.text if cookId then tr("%1 cooking for %2",Plugin.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
+
+			if unread = Social.newComments(day)
+				Ui.unread unread, null, {marginLeft: '4px'}
+
 
 			Dom.onTap !->
 				Page.nav ['day',day]
@@ -205,7 +211,7 @@ renderDayPage = (day) !->
 						tr "Hungry, and I'm cooking"
 					else if state>0
 						tr "Hungry"
-					else if state==0
+					else if state is 0
 						tr "Not joining dinner"
 					else
 						tr "Undecided"
@@ -235,44 +241,47 @@ renderDayPage = (day) !->
 
 		Form.sep()
 
-		
-		cookId = info.get('cook')
-		Form.label !->
-			Dom.style marginTop: '20px'
-			Dom.text if cookId then tr("Chef %1", Plugin.userName(cookId)) else tr("No chef yet")
-		Dom.div !->
-			Dom.style margin: '4px 8px 12px 8px'
-			if cookId
-				Form.input
-					name: 'cost'
-					value: info.func('cost')
-					text: tr 'Total cost'
-					format: renderCurrency
-					onSave: (val) !->
-						val = parseFloat(val.replace(',','.'))
-						val = null if isNaN(val)
-						Server.sync 'cost', info.key(), val, !->
-							info.set 'cost', val
-					inScope: !->
-						Dom.style marginRight: '12px'
-			else
-				Ui.bigButton tr("I'll cook!"), !->
-					state = getState info,userId
-					setState info, userId, -Math.abs(state||1)
+		Obs.observe !->
+			cookId = info.get('cook')
+			Form.label !->
+				Dom.style marginTop: '20px'
+				Dom.text if cookId then tr("Chef %1", Plugin.userName(cookId)) else tr("No chef yet")
+			Dom.div !->
+				Dom.style margin: '4px 8px 12px 8px', minHeight: '44px'
+				if cookId
+					Form.input
+						name: 'cost'
+						value: info.func('cost')
+						text: tr 'Total cost'
+						format: renderCurrency
+						onSave: (val) !->
+							val = parseFloat(val.replace(',','.'))
+							val = null if isNaN(val)
+							Server.sync 'cost', info.key(), val, !->
+								info.set 'cost', val
+						inScope: !->
+							Dom.style marginRight: '12px'
+				else
+					Ui.bigButton tr("I'll cook!"), !->
+						state = getState info,userId
+						setState info, userId, -Math.abs(state||1)
 
 		count = Obs.create 0
 		Form.label !->
 			Dom.text tr("%1 hungry |person|people",count.get())
 
-		# fix this for days that have passed: include eaters that have left the happening since
-		Plugin.users.observeEach (user) !->
-			userId2 = 0|user.key()
+		# Create a temporary observable that is merely used for it's sorting ability
+		tmpObs = null
+		Obs.observe !->
+			tmpObs = Obs.create Util.getInvolvedUserIds(info, getPluginUserIds())
+		tmpObs.observeEach (dummy) !->
+			userId2 = 0|dummy.key()
 			Dom.div !->
 				Dom.style Box: "middle", padding: '0 8px'
 				Ui.avatar (Plugin.userAvatar userId2)
 				Dom.div !->
 					Dom.style Flex: true, marginLeft: '8px'
-					Dom.text user.get('name')
+					Dom.text Plugin.userName(userId2)
 				iconDiv !->
 					state = getState info, userId2
 					stateIcon state
@@ -284,8 +293,11 @@ renderDayPage = (day) !->
 					cb: !-> nextState info, userId2
 					longTap: !-> plusState info, userId2
 			Form.sep()
-		, (user) ->
-			[(if info.peek('eat',user.key()) then 0 else 1), user.peek('name')]
+		, (dummy) ->
+			uid = dummy.key()
+			v = info.peek('eat', uid)
+			v %= 1000 if v? and v isnt ''
+			[(if v then 0 else (if v is 0 then 2 else 1)), Plugin.userName(uid)]
 
 	Social.renderComments day, render: (comment) ->
 		if comment.s and comment.u
@@ -316,12 +328,12 @@ renderBalances = !->
 		info = info.get()
 		return unless info.eat and cook = info.cook
 		eaters = 0
-		eaters += +v for k,v of info.eat when v
+		eaters += +v%1000 for k,v of info.eat when v%1000
 		return unless eaters>1
 		if info.cost?
-			for k,v of info.eat when v
-				delta["#{k}/eat"] = v
-				delta["#{k}/consumed"] = info.cost*v/eaters
+			for k,v of info.eat when v%1000
+				delta["#{k}/eat"] = v%1000
+				delta["#{k}/consumed"] = info.cost*(v%1000)/eaters
 			delta["#{cook}/cook"] = 1
 			delta["#{cook}/cookGuest"] = info.eat[cook]-1 if info.eat[cook]>1
 			delta["#{cook}/fed"] = eaters
@@ -363,7 +375,7 @@ renderBalances = !->
 					renderFlex()
 					renderStat tr("chef"), !->
 						cook = stat.get('cook') || 0
-						cmpEat = (stat.get('eat')||0) - (stat.get('cookGuest')||0)
+						cmpEat = (stat.get('eat')||0)%1000 - (stat.get('cookGuest')||0)
 						perc = Math.round(100*cook/(cmpEat||cook))
 						perc = (if isNaN(perc) then '-' else perc+'%')
 						Dom.text perc
@@ -390,10 +402,12 @@ exports.render = !->
 		return
 
 	if what=='balances'
+		Page.setTitle tr("Balances")
 		renderBalances()
 		return
 
 	if what=='history'
+		Page.setTitle tr("History")
 		items = Obs.create()
 		# show last week, plus earlier days that have a cook
 		Ui.list !->
@@ -429,7 +443,7 @@ exports.render = !->
 
 exports.renderConfig = exports.renderSettings = !->
 	Dom.div !->
-		Dom.style Box: "inline middle"
+		Dom.style Box: "inline middle", margin: '6px 0 10px'
 		Dom.div !->
 			Dom.text tr("Daily deadline: ")
 		require('datepicker.js').time
@@ -437,3 +451,58 @@ exports.renderConfig = exports.renderSettings = !->
 			gmt: true
 			value: Db.shared?.get('deadline') || 16.5*3600
 	
+	Dom.h2 tr "Default statuses"
+
+	defaults = Obs.create(Db.shared?.get('defaults'))
+	expanded = Obs.create()
+
+	e = Form.hidden 'defaults', JSON.stringify(Db.shared?.get('defaults'))
+	Obs.observe !->
+		e.value JSON.stringify(defaults.get())
+
+	# TODO: allow manual removal of users that have left the happening but still have a default status
+	userIds = {}
+	userIds[u] = true for u of Db.shared?.get('defaults')
+	userIds[i] = true for i in getPluginUserIds()
+	for userId2, v of userIds then do (userId2) !->
+		Dom.div !->
+			Dom.style Box: "middle", padding: '8px'
+			Ui.avatar (Plugin.userAvatar userId2)
+			Dom.div !->
+				Dom.style Flex: true, marginLeft: '8px'
+				Dom.text Plugin.userName(userId2)
+			Dom.div !->
+				Dom.style color: '#aaa', margin: '0 5px', border: '8px solid transparent'
+				if expanded.get(userId2)
+					Dom.style borderBottom: '8px solid #ccc', marginTop: '-8px'
+				else
+					Dom.style borderTop: '8px solid #ccc', marginBottom: '-8px'
+
+			Dom.onTap !->
+				expanded.modify(userId2, (v) -> if v then null else true)
+
+		Dom.div !->
+			Dom.style display: if expanded.get(userId2) then 'block' else 'none'
+			for dayName, index in dayNames then do (dayName, index) !->
+				Dom.div !->
+					Dom.style Box: 'middle right', padding: '10px 0'
+					Dom.div dayName
+					state = defaults.get(userId2, index, 'eat')
+					Dom.div !->
+						Dom.style Box: 'middle center', minWidth: '60px'
+						stateIcon state
+						plusIcon state
+
+					Dom.onTap
+						cb: !->
+							defaults.modify userId2, index, 'eat', (state) ->
+								if !state? then 1 else if state>0 then 0 else null
+						longTap: !->
+							buttons = ['0', tr("No")]
+							buttons.push i, i for i in [1..4]
+							chosen = (val) !->
+								if val?
+									defaults.modify userId2, index, 'eat', (state) -> val+1
+							require('modal').show tr('Bringing guests?'), null, chosen, buttons
+
+		Form.sep()
