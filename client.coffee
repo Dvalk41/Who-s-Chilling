@@ -132,7 +132,6 @@ iconDiv = (func) !->
 
 offset = (new Date).getTimezoneOffset()
 today = 0|((Plugin.time()-offset*60)/86400)
-log 'today', today
 
 renderDayItem = (day) !->
 	if typeof day=='object'
@@ -327,7 +326,6 @@ renderDayPage = (day) !->
 									centField.value(0)
 								if v and inputField and centField
 									result = +(inputField.value()+"."+centField.value())
-									log result
 					Dom.on 'keydown', (evt) !->
 						if evt.getKeyCode() in [188,190] # comma and dot
 							centField.focus()
@@ -416,9 +414,10 @@ renderBalances = !->
 		if info.cost?
 			for k,v of info.eat when v%1000
 				delta["#{k}/eat"] = v%1000
+				delta["#{k}/guests"] = (v-1)%1000
 				delta["#{k}/consumed"] = info.cost*(v%1000)/eaters
 			delta["#{cook}/cook"] = 1
-			delta["#{cook}/cookGuest"] = info.eat[cook]-1 if info.eat[cook]>1
+			# delta["#{cook}/cookGuest"] = info.eat[cook]-1 if info.eat[cook]>1
 			delta["#{cook}/fed"] = eaters
 			delta["#{cook}/spent"] = info.cost
 		else
@@ -448,7 +447,7 @@ renderBalances = !->
 					renderFlex()
 					renderStat tr("chef"), !->
 						cook = stat.get('cook') || 0
-						cmpEat = (stat.get('eat')||0)%1000 - (stat.get('cookGuest')||0)
+						cmpEat = (stat.get('eat')||0)%1000 - (stat.get('guests')||0)
 						perc = Math.round(100*cook/(cmpEat||cook))
 						perc = (if isNaN(perc) then '-' else perc+'%')
 						Dom.text perc
@@ -472,7 +471,6 @@ renderBalances = !->
 
 
 renderPersonalBalance = (id) !->
-	log "renderPersonalBalance", id
 	data = Obs.create()
 	merge = (delta, minus, month) ->
 		for k,v of delta
@@ -500,7 +498,6 @@ renderPersonalBalance = (id) !->
 			delta["#{cook}/spent"] = info.cost
 		else
 			delta["#{cook}/noCost"] = 1
-		log day, Util.getUTCMonth(day)
 		merge delta, false, Util.getUTCMonth(day)
 		Obs.onClean !-> merge delta, true
 
