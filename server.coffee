@@ -3,7 +3,6 @@ Event = require 'event'
 Plugin = require 'plugin'
 {tr} = require 'i18n'
 
-
 exports.onConfig = exports.onInstall = (config) !->
 	if config?
 		Db.shared.set 'deadline', config.deadline
@@ -80,14 +79,21 @@ exports.defaults = !->
 exports.remind = !->
 	day = 0|(Plugin.time()/86400)
 	eat = Db.shared.get('days',day,'eat') || {}
-	include = []
-	for userId in Plugin.userIds() when !eat[userId]? or eat[userId] is ''
-		include.push userId
-	if include.length
-		Event.create
-			text: tr 'Are you hungry/cooking? Deadline in 30m!'
-			unit: tr 'eat?'
-			for: include
+	remind = false
+	for userId, value of eat when value>0 or value>1000
+		# at least one person is hungry today, remind others
+		remind = true
+		break
+
+	if remind
+		include = []
+		for userId in Plugin.userIds() when !eat[userId]? or eat[userId] is ''
+			include.push userId
+		if include.length
+			Event.create
+				text: tr 'Are you hungry/cooking? Deadline in 30m!'
+				unit: tr 'eat?'
+				for: include
 	setTimers 300
 
 exports.deadline = !->
@@ -179,7 +185,7 @@ exports.client_cost = (day, value) !->
 		newC._o = oldValue
 		if oldValue?
 			tr "changed total cost from %1 to %2",
-				if value? then fc(value) else "??"
 				fc(oldValue)
+				if value? then fc(value) else "??"
 		else
 			tr "entered total cost: %1", if value? then fc(value) else "??"

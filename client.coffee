@@ -1,6 +1,7 @@
 Util = require 'util.js'
 Db = require 'db'
 Dom = require 'dom'
+Event = require 'event'
 Obs = require 'obs'
 Server = require 'server'
 Time = require 'time'
@@ -174,12 +175,15 @@ renderDayItem = (day) !->
 						color: if cnt or cookId then 'inherit' else '#aaa'
 					Dom.text if cookId then tr("%1 cooking for %2",Plugin.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
 
+			Event.renderBubble [day], style: marginLeft: '4px'
+			###
 			if unread = Social.newComments(day)
 				Ui.unread unread, null, {marginLeft: '4px'}
+			###
 
 
 			Dom.onTap !->
-				Page.nav ['day',day]
+				Page.nav [day]
 
 
 		Form.vSep()
@@ -195,6 +199,7 @@ renderDayItem = (day) !->
 
 renderDayPage = (day) !->
 	Page.setTitle getDayName(day)
+	Event.showStar tr("this day")
 
 	info = Db.shared.ref('days', day) || new Obs.Value(null,day)
 	userId = Plugin.userId()
@@ -361,9 +366,9 @@ renderBalances = !->
 				Dom.style Flex: 1
 				Dom.div !->
 					Dom.style margin: '-8px -8px -6px', background: '#fff', padding: '8px'
-					Ui.avatar (Plugin.userAvatar stat.key()), !->
-						Dom.style float: 'right'
-					, 32
+					Ui.avatar (Plugin.userAvatar stat.key()),
+						style: float: 'right'
+						size: 32
 					Dom.h2 Plugin.userName(stat.key())
 
 				Dom.div !->
@@ -397,8 +402,8 @@ renderBalances = !->
 
 exports.render = !->
 	what = Page.state.get(0)
-	if what=='day'
-		renderDayPage Page.state.get(1)
+	if +what
+		renderDayPage +what # day nr
 		return
 
 	if what=='balances'
@@ -408,6 +413,14 @@ exports.render = !->
 
 	if what=='history'
 		Page.setTitle tr("History")
+
+		eatersCnt = (eat) ->
+			cnt = 0
+			for k,v of eat
+				v %= 1000 if v isnt ''
+				cnt += +v
+			cnt
+
 		items = Obs.create()
 		# show last week, plus earlier days that have a cook
 		Ui.list !->
@@ -415,13 +428,18 @@ exports.render = !->
 				renderDayItem day
 			Db.shared.dirty().observeEach 'days', (info) !->
 				day = 0|info.key()
-				if day<today-7 and info.get('cook')
+				if day<today-7 and (info.get('cook') or eatersCnt(info.get('eat'))>0)
 					renderDayItem info
 					items.set true
 			, (day) -> -day.key()
 			Obs.observe !->
 				Ui.emptyText tr("No earlier items") unless items.get()
 		return
+
+	if title = Plugin.title()
+		Dom.h2 !->
+			Dom.style margin: '6px 2px'
+			Dom.text title
 
 	Ui.list !->
 		Db.personal.observeEach 'open', (info) !->
