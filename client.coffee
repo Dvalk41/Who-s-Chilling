@@ -38,7 +38,22 @@ monthNames = [
 	tr 'Nov'
 	tr 'Dec'
 ]
-						
+
+fullMonthNames = [
+	tr 'Januari'
+	tr 'Februari'
+	tr 'March'
+	tr 'April'
+	tr 'May'
+	tr 'Juni'
+	tr 'July'
+	tr 'August'
+	tr 'Sepember'
+	tr 'October'
+	tr 'November'
+	tr 'December'
+]
+
 renderCurrency = (val) ->
 	Dom.text Util.formatCurrency val
 
@@ -252,20 +267,73 @@ renderDayPage = (day) !->
 				Dom.style marginTop: '20px'
 				Dom.text if cookId then tr("Chef %1", Plugin.userName(cookId)) else tr("No chef yet")
 			Dom.div !->
-				Dom.style margin: '4px 8px 12px 8px', minHeight: '44px'
+				Dom.style margin: '4px 8px 12px 8px', minHeight: '44px', Box: 'middle'
 				if cookId
-					Form.input
-						name: 'cost'
-						value: info.func('cost')
-						text: tr 'Total cost'
-						format: renderCurrency
-						onSave: (val) !->
-							val = parseFloat(val.replace(',','.'))
-							val = null if isNaN(val)
-							Server.sync 'cost', info.key(), val, !->
-								info.set 'cost', val
-						inScope: !->
-							Dom.style marginRight: '12px'
+					# Form.input
+					# 	name: 'cost'
+					# 	value: info.func('cost')
+					# 	text: tr 'Total cost'
+					# 	format: renderCurrency
+					# 	onSave: (val) !->
+					# 		val = parseFloat(val.replace(',','.'))
+					# 		val = null if isNaN(val)
+					# 		Server.sync 'cost', info.key(), val, !->
+					# 			info.set 'cost', val
+					# 	inScope: !->
+					# 		Dom.style marginRight: '12px'
+					result = "init"
+					Obs.onClean !-> # when leaving page
+						if result isnt "init" and result?
+							Server.sync 'cost', info.key(), result, !->
+								info.set 'cost', result
+
+					Dom.div !->
+						Dom.text "Total cost: €" # (Db.shared.get("currency")||"€")
+						Dom.style
+							margin: '-3px 5px 0 0'
+							fontSize: '21px'
+					inputField = undefined
+					centField = undefined
+					Dom.div !->
+						Dom.style width: '80px', margin: '-20px 0 -20px 0'
+						inputField = Form.input
+							name: 'paidby'
+							type: 'number'
+							value: ->
+								Math.floor(info.get('cost'))
+							text: '0'
+							inScope: !->
+								Dom.style textAlign: 'right'
+							onChange: (v) !->
+								if v and inputField and centField
+									result = +(inputField.value()+"."+centField.value())
+					Dom.div !->
+						Dom.style
+							width: '10px'
+							fontSize: '175%'
+							padding: '12px 0 0 5px'
+							margin: '-20px 0 -20px 0'
+						Dom.text ","
+					Dom.div !->
+						Dom.style width: '50px', margin: '-20px 0 -20px 0'
+						centField = Form.input
+							name: 'paidby2'
+							type: 'number'
+							text: '00'
+							value: ->
+								Math.round((info.get('cost')%1)*100)
+							onChange: (v) !->
+								if v<0
+									centField.value(0)
+								if v and inputField and centField
+									result = +(inputField.value()+"."+centField.value())
+									log result
+					Dom.on 'keydown', (evt) !->
+						if evt.getKeyCode() in [188,190] # comma and dot
+							centField.focus()
+							centField.select()
+							evt.kill()
+					,true
 				else
 					Ui.bigButton tr("I'll cook!"), !->
 						state = getState info,userId
@@ -320,6 +388,16 @@ renderDayPage = (day) !->
 				Dom.text comment.c
 			true # We're rendering these type of comments
 
+renderStat = (text,val) !->
+	Dom.div !->
+		Dom.div !->
+			Dom.style fontSize: '22px'
+			if typeof val=='function' then val() else Dom.text val
+		Dom.style fontSize: '85%', textAlign: 'center'
+		Dom.text text
+
+renderFlex = !-> Dom.div !-> Dom.style Flex: 1
+
 renderBalances = !->
 	stats = Obs.create()
 	merge = (delta,minus) ->
@@ -348,16 +426,6 @@ renderBalances = !->
 		merge delta
 		Obs.onClean !-> merge delta, true
 
-	renderStat = (text,val) !->
-		Dom.div !->
-			Dom.div !->
-				Dom.style fontSize: '22px'
-				if typeof val=='function' then val() else Dom.text val
-			Dom.style fontSize: '85%', textAlign: 'center'
-			Dom.text text
-
-	renderFlex = !-> Dom.div !-> Dom.style Flex: 1
-
 	Obs.observe !-> stats.observeEach (stat) !->
 		Dom.section !->
 			Dom.style Box: "middle"
@@ -365,7 +433,7 @@ renderBalances = !->
 			Dom.div !->
 				Dom.style Flex: 1
 				Dom.div !->
-					Dom.style margin: '-8px -8px -6px', background: '#fff', padding: '8px'
+					Dom.style margin: '-8px -8px -6px', padding: '8px'
 					Ui.avatar (Plugin.userAvatar stat.key()),
 						style: float: 'right'
 						size: 32
@@ -396,9 +464,90 @@ renderBalances = !->
 						Dom.br()
 						Dom.text tr("cooked %1 time|s",stat.get("cook")||0)
 
+			Dom.onTap !->
+				Page.nav  {0:"personalBalance", "?id": stat.key()}
+
 					#Dom.text JSON.stringify stat.get()
 	, (stat) -> (stat.get('spent')||0)-(stat.get('consumed')||0)
 
+
+renderPersonalBalance = (id) !->
+	log "renderPersonalBalance", id
+	data = Obs.create()
+	merge = (delta, minus, month) ->
+		for k,v of delta
+			k = k.split('/')
+			if !data.peek(month)? then data.set(month, {})
+			stats = data.ref month
+			k.push (stats.peek.apply(stats,k)||0) + (if minus then -v else v)
+			stats.set.apply stats, k
+
+	Db.shared.observeEach 'days', (info) !->
+		delta = {}
+		day = info.key()
+		info = info.get()
+		return unless info.eat and cook = info.cook
+		eaters = 0
+		eaters += +v%1000 for k,v of info.eat when v%1000
+		return unless eaters>1
+		if info.cost?
+			for k,v of info.eat when v%1000
+				delta["#{k}/eat"] = v%1000
+				delta["#{k}/consumed"] = info.cost*(v%1000)/eaters
+			delta["#{cook}/cook"] = 1
+			delta["#{cook}/cookGuest"] = info.eat[cook]-1 if info.eat[cook]>1
+			delta["#{cook}/fed"] = eaters
+			delta["#{cook}/spent"] = info.cost
+		else
+			delta["#{cook}/noCost"] = 1
+		log day, Util.getUTCMonth(day)
+		merge delta, false, Util.getUTCMonth(day)
+		Obs.onClean !-> merge delta, true
+
+	# for each month
+	data.observeEach (d) !->
+		Dom.section !->
+			Dom.style Box: "middle"
+
+			Dom.div !->
+				Dom.style Flex: 1
+				Dom.div !->
+					Dom.style margin: '-8px -8px -6px', padding: '8px'
+					Ui.avatar (Plugin.userAvatar id),
+						style: float: 'right'
+						size: 32
+					Dom.h2 fullMonthNames[d.key()]
+
+				Dom.div !->
+					Dom.style Box: "middle"
+					if m = d.get(id)
+						renderStat tr("balance"), !->
+							balance = (m.spent||0) - (m.consumed||0)
+							renderCurrency balance
+							Dom.style color: if balance<0 then '#a00000' else '#00a000'
+						renderFlex()
+						renderStat tr("chef"), !->
+							cook = m.cook || 0
+							cmpEat = (m.eat||0)%1000 - (m.cookGuest||0)
+							perc = Math.round(100*cook/(cmpEat||cook))
+							perc = (if isNaN(perc) then '-' else perc+'%')
+							Dom.text perc
+						renderFlex()
+						renderStat tr("per meal"), !->
+							renderCurrency (m.spent||0)/(m.fed||1)
+						renderFlex()
+						Dom.div !->
+							Dom.style fontSize: '85%', textAlign: 'right'
+							Dom.text tr("ate %1 time|s",m.eat||0)
+							Dom.br()
+							Dom.text tr("served %1 plate|s",m.fed||0)
+							Dom.br()
+							Dom.text tr("cooked %1 time|s",m.cook||0)
+					else
+						Dom.text tr("Did not join dinner this month")
+	, (d) ->
+		-d.key()
+	#render settle, times cooked, platessorved, meals eaten.
 
 exports.render = !->
 	what = Page.state.get(0)
@@ -409,6 +558,12 @@ exports.render = !->
 	if what=='balances'
 		Page.setTitle tr("Balances")
 		renderBalances()
+		return
+
+	if what=='personalBalance'
+		id = Page.state.get("?id")
+		Page.setTitle tr("Balances of %1", Plugin.userName(id))
+		renderPersonalBalance(id)
 		return
 
 	if what=='history'
@@ -468,7 +623,7 @@ exports.renderConfig = exports.renderSettings = !->
 			name: 'deadline'
 			gmt: true
 			value: Db.shared?.get('deadline') || 16.5*3600
-	
+
 	Dom.h2 tr "Default statuses"
 
 	defaults = Obs.create(Db.shared?.get('defaults'))

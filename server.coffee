@@ -178,7 +178,7 @@ exports.client_cost = (day, value) !->
 	info.set 'cost', value
 	cookId = info.get('cook')
 	Db.personal(cookId).set('open',day,if value==null then true else null) if cookId
-	
+
 	fc = require('util.js').formatCurrency
 	logComment day, 'cost', (newC, oldC) ->
 		oldValue = oldC._o if oldC

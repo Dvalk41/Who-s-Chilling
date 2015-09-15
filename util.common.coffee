@@ -11,6 +11,11 @@ exports.getUTCDay = getUTCDay = (day) ->
 	date = new Date(day*86400000)
 	date.getUTCDay()
 
+exports.getUTCMonth = getUTCDay = (day) ->
+	date = new Date(day*86400000)
+	date.getUTCMonth()
+
+
 exports.getInvolvedUserIds = (info, pluginUserIds) ->
 	userIds = {}
 
