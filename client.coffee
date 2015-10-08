@@ -176,13 +176,13 @@ renderDayItem = (day) !->
 					fontWeight: (if day==today then 'bold' else 'normal')
 					color: (if day==today then '#000' else 'inherit')
 				Dom.text getDayName(day)
-				
+
 				Dom.div !->
 					cnt = 0
 					for k,v of info.get('eat')
 						v %= 1000 if v isnt ''
 						cnt += +v
-						
+
 					Dom.style
 						fontSize: '80%'
 						fontWeight: 'normal'
@@ -194,7 +194,6 @@ renderDayItem = (day) !->
 			if unread = Social.newComments(day)
 				Ui.unread unread, null, {marginLeft: '4px'}
 			###
-
 
 			Dom.onTap !->
 				Page.nav [day]
@@ -209,15 +208,13 @@ renderDayItem = (day) !->
 			Dom.onTap
 				cb: !-> nextState info, userId
 				longTap: !-> plusState info, userId
-			
-
 renderDayPage = (day) !->
 	Page.setTitle getDayName(day)
 	Event.showStar tr("this day")
 
 	info = Db.shared.ref('days', day) || new Obs.Value(null,day)
 	userId = Plugin.userId()
-		
+
 	Dom.style padding: 0 # style the main element
 	Dom.div !->
 		Dom.style backgroundColor: '#f8f8f8', borderBottom: '2px solid #ccc', paddingBottom: '8px'
@@ -469,7 +466,6 @@ renderBalances = !->
 					#Dom.text JSON.stringify stat.get()
 	, (stat) -> (stat.get('spent')||0)-(stat.get('consumed')||0)
 
-
 renderPersonalBalance = (id) !->
 	data = Obs.create()
 	merge = (delta, minus, month) ->
@@ -609,7 +605,6 @@ exports.render = !->
 	,
 		label: tr "History"
 		action: !-> Page.nav ['history']
-
 
 exports.renderConfig = exports.renderSettings = !->
 	Dom.div !->
