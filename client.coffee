@@ -1,4 +1,6 @@
 Util = require 'util.js'
+
+Comments = require 'comments'
 Db = require 'db'
 Dom = require 'dom'
 Event = require 'event'
@@ -7,10 +9,9 @@ Server = require 'server'
 Time = require 'time'
 Form = require 'form'
 Page = require 'page'
-Plugin = require 'plugin'
-Social = require 'social'
+App = require 'app'
 Ui = require 'ui'
-Colors = Plugin.colors()
+Colors = App.colors()
 {tr} = require 'i18n'
 
 
@@ -68,12 +69,12 @@ getState = (info,userId) ->
 	if cookId==userId then -state else state
 
 getPluginUserIds = ->
-	+uid for uid of Plugin.users.get()
+	+uid for uid of App.users.get()
 
 stateIcon = (state) !->
 	icon = if !state? or state is '' then 'unknown' else if state>0 then 'yes' else if state<0 then 'cook' else 'no'
 	Dom.img !->
-		Dom.prop src: Plugin.resourceUri("eat-#{icon}.png")
+		Dom.prop src: App.resourceUri("eat-#{icon}.png")
 		Dom.style
 			maxWidth: '32px'
 			maxHeight: '24px'
@@ -84,7 +85,7 @@ plusIcon = (state) !->
 	if (state>1 or state<-1)
 		Dom.style
 			fontWeight: 'bold'
-			color: Plugin.colors().highlight
+			color: App.colors().highlight
 		Dom.span !->
 			Dom.style paddingLeft: '4px'
 			Dom.text "+"+(Math.abs(state)-1)
@@ -97,8 +98,8 @@ setState = (info,userId,newState) !->
 
 editingOthers = {}
 editOther = (func,info,userId) ->
-	return true if Plugin.userId()==userId || editingOthers[userId]
-	require('modal').confirm tr("Are you sure you want to make this update on behalf of %1?",Plugin.userName(userId)), !->
+	return true if App.userId()==userId || editingOthers[userId]
+	require('modal').confirm tr("Are you sure you want to make this update on behalf of %1?",App.userName(userId)), !->
 		editingOthers[userId] = true
 		func info, userId
 
@@ -131,7 +132,7 @@ iconDiv = (func) !->
 		func?()
 
 offset = (new Date).getTimezoneOffset()
-today = 0|((Plugin.time()-offset*60)/86400)
+today = 0|((App.time()-offset*60)/86400)
 
 renderDayItem = (day) !->
 	if typeof day=='object'
@@ -140,18 +141,18 @@ renderDayItem = (day) !->
 	else
 		info = Db.shared.ref('days', day) || new Obs.Value(null,day)
 
-	userId = Plugin.userId()
+	userId = App.userId()
 
-	Ui.item !->
+	Form.row !->
 		Dom.style
 			Box: "middle"
-			padding: 0
-
+			Flex: 1
+			padding: '0px'
+		cookId = info.get('cook')
 		Dom.div !->
-			Dom.style Box: 'middle', Flex: 1, padding: '8px'
-			cookId = info.get('cook')
+			Dom.style padding: '12px'
 			if cookId
-				Ui.avatar (Plugin.userAvatar cookId)
+				Ui.avatar (App.userAvatar cookId)
 			else
 				Dom.div !->
 					Dom.style
@@ -170,34 +171,34 @@ renderDayItem = (day) !->
 					Dom.br()
 					Dom.text tr("Chef")
 
+		Dom.div !->
+			Dom.style
+				Flex: 1
+				fontWeight: (if day==today then 'bold' else 'normal')
+				color: (if day==today then '#000' else 'inherit')
+				padding: '12px 0px'
+			Dom.text getDayName(day)
+
 			Dom.div !->
+				cnt = 0
+				for k,v of info.get('eat')
+					v %= 1000 if v isnt ''
+					cnt += +v
+
 				Dom.style
-					Flex: 1
-					fontWeight: (if day==today then 'bold' else 'normal')
-					color: (if day==today then '#000' else 'inherit')
-				Dom.text getDayName(day)
+					fontSize: '80%'
+					fontWeight: 'normal'
+					color: if cnt or cookId then 'inherit' else '#aaa'
+				Dom.text if cookId then tr("%1 cooking for %2",App.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
 
-				Dom.div !->
-					cnt = 0
-					for k,v of info.get('eat')
-						v %= 1000 if v isnt ''
-						cnt += +v
+		Event.renderBubble [day], style: marginLeft: '4px'
+		###
+		if unread = Social.newComments(day)
+			Ui.unread unread, null, {marginLeft: '4px'}
+		###
 
-					Dom.style
-						fontSize: '80%'
-						fontWeight: 'normal'
-						color: if cnt or cookId then 'inherit' else '#aaa'
-					Dom.text if cookId then tr("%1 cooking for %2",Plugin.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
-
-			Event.renderBubble [day], style: marginLeft: '4px'
-			###
-			if unread = Social.newComments(day)
-				Ui.unread unread, null, {marginLeft: '4px'}
-			###
-
-			Dom.onTap !->
-				Page.nav [day]
-
+		Dom.onTap !->
+			Page.nav [day]
 
 		Form.vSep()
 
@@ -208,20 +209,32 @@ renderDayItem = (day) !->
 			Dom.onTap
 				cb: !-> nextState info, userId
 				longTap: !-> plusState info, userId
+
 renderDayPage = (day) !->
 	Page.setTitle getDayName(day)
-	Event.showStar tr("this day")
+	Page.setCardBackground();
+	Comments.enable
+		legacyStore: day
+		messages:
+			deadline: (c) -> tr("%1 changed status after the deadline", c.user)
+			other: (c) -> tr("%1 changed status for %2", c.user, c.about)
+			otherdeadline: (c) -> tr("%1 changed status for %2 after the deadline", c.user, c.about)
+			cost: (c) ->
+				fc = require('util.js').formatCurrency
+				if c.c2
+					tr("%1 changed total cost from #{fc(c.c2)} to #{fc(c.c1)}", c.user)
+				else
+					tr("%1 entered total cost #{fc(c.c1)}", c.user)
+			remind: (c) -> tr("Are you hungry/cooking? Deadline in 30m!")
 
 	info = Db.shared.ref('days', day) || new Obs.Value(null,day)
-	userId = Plugin.userId()
+	userId = App.userId()
 
-	Dom.style padding: 0 # style the main element
-	Dom.div !->
-		Dom.style backgroundColor: '#f8f8f8', borderBottom: '2px solid #ccc', paddingBottom: '8px'
-
-		Form.box !->
-			Dom.text tr "Your status"
-			Dom.div !->
+	Dom.section !->
+		Dom.style ChildMargin: 12
+		Form.box
+			content: tr "Your status"
+			sub: !->
 				state = getState(info, userId)
 				Dom.text if state<0
 						tr "Hungry, and I'm cooking"
@@ -231,108 +244,104 @@ renderDayPage = (day) !->
 						tr "Not joining dinner"
 					else
 						tr "Undecided"
-
-			iconDiv !->
-				Dom.style position: 'absolute', right: '8px', top: '5px'
+			icon: !->
 				stateIcon getState(info, userId)
-			Dom.onTap !-> nextState info, userId
-
-		Form.sep()
-
-		Form.box !->
-			#Dom.style Box: "middle", padding: '0 8px'
-			Dom.text tr "Your guests"
-			state = getState(info, userId)
-			Dom.div !->
-				#Dom.style Flex: true
-				#Dom.text tr "Bringing guests?"
-				if state<-1 or state>1
-					Dom.text tr "Bringing %1 guest|s", (Math.abs(state)-1)
-				else
-					Dom.text tr "Not bringing guests"
-			iconDiv !->
-				Dom.style position: 'absolute', right: '8px', top: '5px'
-				plusIcon state
-			Dom.onTap !-> plusState info, userId
-
-		Form.sep()
+			onTap: !-> nextState info, userId
 
 		Obs.observe !->
-			cookId = info.get('cook')
-			Form.label !->
-				Dom.style marginTop: '20px'
-				Dom.text if cookId then tr("Chef %1", Plugin.userName(cookId)) else tr("No chef yet")
-			Dom.div !->
-				Dom.style margin: '4px 8px 12px 8px', minHeight: '44px', Box: 'middle'
-				if cookId
-					# Form.input
-					# 	name: 'cost'
-					# 	value: info.func('cost')
-					# 	text: tr 'Total cost'
-					# 	format: renderCurrency
-					# 	onSave: (val) !->
-					# 		val = parseFloat(val.replace(',','.'))
-					# 		val = null if isNaN(val)
-					# 		Server.sync 'cost', info.key(), val, !->
-					# 			info.set 'cost', val
-					# 	inScope: !->
-					# 		Dom.style marginRight: '12px'
-					result = "init"
-					Obs.onClean !-> # when leaving page
-						if result isnt "init" and result?
-							Server.sync 'cost', info.key(), result, !->
-								info.set 'cost', result
+			state = getState(info, userId)
+			Form.box
+				content: tr "Your guests"
+				sub: !->
+					Dom.div !->
+						#Dom.style Flex: true
+						#Dom.text tr "Bringing guests?"
+						if state<-1 or state>1
+							Dom.text tr "Bringing %1 guest|s", (Math.abs(state)-1)
+						else
+							Dom.text tr "Not bringing guests"
+				icon: !->
+					plusIcon state
+				onTap: !-> plusState info, userId
 
-					Dom.div !->
-						Dom.text "Total cost: €" # (Db.shared.get("currency")||"€")
-						Dom.style
-							margin: '-3px 5px 0 0'
-							fontSize: '21px'
-					inputField = undefined
-					centField = undefined
-					Dom.div !->
-						Dom.style width: '80px', margin: '-20px 0 -20px 0'
-						inputField = Form.input
-							name: 'paidby'
-							type: 'number'
-							value: ->
-								Math.floor(info.get('cost'))
-							text: '0'
-							inScope: !->
-								Dom.style textAlign: 'right'
-							onChange: (v) !->
-								if v and inputField and centField
-									result = +(inputField.value()+"."+centField.value())
-					Dom.div !->
-						Dom.style
-							width: '10px'
-							fontSize: '175%'
-							padding: '12px 0 0 5px'
-							margin: '-20px 0 -20px 0'
-						Dom.text ","
-					Dom.div !->
-						Dom.style width: '50px', margin: '-20px 0 -20px 0'
-						centField = Form.input
-							name: 'paidby2'
-							type: 'number'
-							text: '00'
-							value: ->
-								Math.round((info.get('cost')%1)*100)
-							onChange: (v) !->
-								if v<0
-									centField.value(0)
-								if v and inputField and centField
-									result = +(inputField.value()+"."+centField.value())
-					Dom.on 'keydown', (evt) !->
-						if evt.getKeyCode() in [188,190] # comma and dot
-							centField.focus()
-							centField.select()
-							evt.kill()
-					,true
-				else
-					Ui.bigButton tr("I'll cook!"), !->
-						state = getState info,userId
-						setState info, userId, -Math.abs(state||1)
+	Dom.section !->
+		Dom.style ChildMargin: 12
+		cookId = info.get('cook')
+		Form.label !->
+			Dom.text if cookId then tr("Chef %1", App.userName(cookId)) else tr("No chef yet")
+		Form.row !->
+			Dom.style Box: 'middle'
+			if cookId
+				# Form.input
+				# 	name: 'cost'
+				# 	value: info.func('cost')
+				# 	text: tr 'Total cost'
+				# 	format: renderCurrency
+				# 	onSave: (val) !->
+				# 		val = parseFloat(val.replace(',','.'))
+				# 		val = null if isNaN(val)
+				# 		Server.sync 'cost', info.key(), val, !->
+				# 			info.set 'cost', val
+				# 	inScope: !->
+				# 		Dom.style marginRight: '12px'
+				result = "init"
+				Obs.onClean !-> # when leaving page
+					if result isnt "init" and result?
+						Server.sync 'cost', info.key(), result, !->
+							info.set 'cost', result
+
+				Dom.div !->
+					Dom.text "Total cost: €" # (Db.shared.get("currency")||"€")
+					Dom.style
+						margin: '-3px 5px 0 0'
+						fontSize: '21px'
+				inputField = undefined
+				centField = undefined
+				Dom.div !->
+					Dom.style width: '80px', margin: '-20px 0 -20px 0'
+					inputField = Form.input
+						name: 'paidby'
+						type: 'number'
+						value: ->
+							Math.floor(info.get('cost'))
+						text: '0'
+						style: {textAlign: 'right'}
+						onChange: (v) !->
+							if v and inputField and centField
+								result = +('0'+inputField.value()+"."+centField.value())
+				Dom.div !->
+					Dom.style
+						width: '10px'
+						fontSize: '175%'
+						padding: '12px 0 0 5px'
+						margin: '-20px 0 -20px 0'
+					Dom.text ","
+				Dom.div !->
+					Dom.style width: '60px', margin: '-20px 0 -20px 0'
+					centField = Form.input
+						name: 'paidby2'
+						type: 'number'
+						text: '00'
+						value: ->
+							Math.round((info.get('cost')%1)*100)
+						onChange: (v) !->
+							if v<0
+								centField.value(0)
+							if v and inputField and centField
+								result = +('0'+inputField.value()+"."+centField.value())
+				Dom.on 'keydown', (evt) !->
+					if evt.getKeyCode() in [188,190] # comma and dot
+						centField.focus()
+						centField.select()
+						evt.kill()
+				,true
+			else
+				Ui.bigButton tr("I'll cook!"), !->
+					state = getState info,userId
+					setState info, userId, -Math.abs(state||1)
+
+	Dom.section !->
+		Dom.style ChildMargin: 12
 
 		count = Obs.create 0
 		Form.label !->
@@ -344,44 +353,25 @@ renderDayPage = (day) !->
 			tmpObs = Obs.create Util.getInvolvedUserIds(info, getPluginUserIds())
 		tmpObs.observeEach (dummy) !->
 			userId2 = 0|dummy.key()
-			Dom.div !->
-				Dom.style Box: "middle", padding: '0 8px'
-				Ui.avatar (Plugin.userAvatar userId2)
-				Dom.div !->
-					Dom.style Flex: true, marginLeft: '8px'
-					Dom.text Plugin.userName(userId2)
-				iconDiv !->
+			Ui.item
+				avatar: (App.userAvatar userId2)
+				content: App.userName(userId2)
+				afterIcon: !->
+					log "right? ui"
 					state = getState info, userId2
 					stateIcon state
 					plusIcon state
 					delta = Math.abs(0|state)
 					count.incr delta
 					Obs.onClean !-> count.incr -delta
-				Dom.onTap
+				onTap:
 					cb: !-> nextState info, userId2
 					longTap: !-> plusState info, userId2
-			Form.sep()
 		, (dummy) ->
 			uid = dummy.key()
 			v = info.peek('eat', uid)
 			v %= 1000 if v? and v isnt ''
-			[(if v then 0 else (if v is 0 then 2 else 1)), Plugin.userName(uid)]
-
-	Social.renderComments day, render: (comment) ->
-		if comment.s and comment.u
-			comment.c = Plugin.userName(comment.u) + ' ' + comment.c
-			delete comment.u
-			Dom.div !->
-				Dom.style margin: '6px 0 6px 56px', fontSize: '70%'
-
-				Dom.span !->
-					Dom.style color: '#999'
-					#Dom.text Plugin.userName(comment.u) + " • "
-					Time.deltaText comment.t
-					Dom.text " • "
-
-				Dom.text comment.c
-			true # We're rendering these type of comments
+			[(if v then 0 else (if v is 0 then 2 else 1)), App.userName(uid)]
 
 renderStat = (text,val) !->
 	Dom.div !->
@@ -394,6 +384,7 @@ renderStat = (text,val) !->
 renderFlex = !-> Dom.div !-> Dom.style Flex: 1
 
 renderBalances = !->
+	Comments.enable()
 	stats = Obs.create()
 	merge = (delta,minus) ->
 		for k,v of delta
@@ -423,42 +414,39 @@ renderBalances = !->
 		Obs.onClean !-> merge delta, true
 
 	Obs.observe !-> stats.observeEach (stat) !->
-		Dom.section !->
-			Dom.style Box: "middle"
+		Form.row !->
+			Dom.style Flex: 1
+			Dom.div !->
+				Dom.style margin: '-8px -8px -6px', padding: '8px'
+				Ui.avatar (App.userAvatar stat.key()),
+					style: float: 'right'
+					size: 32
+				Dom.h2 App.userName(stat.key())
 
 			Dom.div !->
-				Dom.style Flex: 1
+				Dom.style Box: "middle"
+				renderStat tr("balance"), !->
+					balance = (stat.get('spent')||0) - (stat.get('consumed')||0)
+					renderCurrency balance
+					Dom.style color: if balance<0 then '#a00000' else '#00a000'
+				renderFlex()
+				renderStat tr("chef"), !->
+					cook = stat.get('cook') || 0
+					cmpEat = (stat.get('eat')||0)%1000 - (stat.get('guests')||0)
+					perc = Math.round(100*cook/(cmpEat||cook))
+					perc = (if isNaN(perc) then '-' else perc+'%')
+					Dom.text perc
+				renderFlex()
+				renderStat tr("per meal"), !->
+					renderCurrency (stat.get('spent')||0)/(stat.get('fed')||1)
+				renderFlex()
 				Dom.div !->
-					Dom.style margin: '-8px -8px -6px', padding: '8px'
-					Ui.avatar (Plugin.userAvatar stat.key()),
-						style: float: 'right'
-						size: 32
-					Dom.h2 Plugin.userName(stat.key())
-
-				Dom.div !->
-					Dom.style Box: "middle"
-					renderStat tr("balance"), !->
-						balance = (stat.get('spent')||0) - (stat.get('consumed')||0)
-						renderCurrency balance
-						Dom.style color: if balance<0 then '#a00000' else '#00a000'
-					renderFlex()
-					renderStat tr("chef"), !->
-						cook = stat.get('cook') || 0
-						cmpEat = (stat.get('eat')||0)%1000 - (stat.get('guests')||0)
-						perc = Math.round(100*cook/(cmpEat||cook))
-						perc = (if isNaN(perc) then '-' else perc+'%')
-						Dom.text perc
-					renderFlex()
-					renderStat tr("per meal"), !->
-						renderCurrency (stat.get('spent')||0)/(stat.get('fed')||1)
-					renderFlex()
-					Dom.div !->
-						Dom.style fontSize: '85%', textAlign: 'right'
-						Dom.text tr("ate %1 time|s",stat.get("eat")||0)
-						Dom.br()
-						Dom.text tr("served %1 plate|s",stat.get("fed")||0)
-						Dom.br()
-						Dom.text tr("cooked %1 time|s",stat.get("cook")||0)
+					Dom.style fontSize: '85%', textAlign: 'right'
+					Dom.text tr("ate %1 time|s",stat.get("eat")||0)
+					Dom.br()
+					Dom.text tr("served %1 plate|s",stat.get("fed")||0)
+					Dom.br()
+					Dom.text tr("cooked %1 time|s",stat.get("cook")||0)
 
 			Dom.onTap !->
 				Page.nav  {0:"personalBalance", "?id": stat.key()}
@@ -499,45 +487,42 @@ renderPersonalBalance = (id) !->
 
 	# for each month
 	data.observeEach (d) !->
-		Dom.section !->
-			Dom.style Box: "middle"
+		Form.row !->
+			Dom.style Flex: 1
+			Dom.div !->
+				Dom.style margin: '-8px -8px -6px', padding: '8px'
+				Ui.avatar (App.userAvatar id),
+					style: float: 'right'
+					size: 32
+				Dom.h2 fullMonthNames[d.key()]
 
 			Dom.div !->
-				Dom.style Flex: 1
-				Dom.div !->
-					Dom.style margin: '-8px -8px -6px', padding: '8px'
-					Ui.avatar (Plugin.userAvatar id),
-						style: float: 'right'
-						size: 32
-					Dom.h2 fullMonthNames[d.key()]
-
-				Dom.div !->
-					Dom.style Box: "middle"
-					if m = d.get(id)
-						renderStat tr("balance"), !->
-							balance = (m.spent||0) - (m.consumed||0)
-							renderCurrency balance
-							Dom.style color: if balance<0 then '#a00000' else '#00a000'
-						renderFlex()
-						renderStat tr("chef"), !->
-							cook = m.cook || 0
-							cmpEat = (m.eat||0)%1000 - (m.cookGuest||0)
-							perc = Math.round(100*cook/(cmpEat||cook))
-							perc = (if isNaN(perc) then '-' else perc+'%')
-							Dom.text perc
-						renderFlex()
-						renderStat tr("per meal"), !->
-							renderCurrency (m.spent||0)/(m.fed||1)
-						renderFlex()
-						Dom.div !->
-							Dom.style fontSize: '85%', textAlign: 'right'
-							Dom.text tr("ate %1 time|s",m.eat||0)
-							Dom.br()
-							Dom.text tr("served %1 plate|s",m.fed||0)
-							Dom.br()
-							Dom.text tr("cooked %1 time|s",m.cook||0)
-					else
-						Dom.text tr("Did not join dinner this month")
+				Dom.style Box: "middle"
+				if m = d.get(id)
+					renderStat tr("balance"), !->
+						balance = (m.spent||0) - (m.consumed||0)
+						renderCurrency balance
+						Dom.style color: if balance<0 then '#a00000' else '#00a000'
+					renderFlex()
+					renderStat tr("chef"), !->
+						cook = m.cook || 0
+						cmpEat = (m.eat||0)%1000 - (m.cookGuest||0)
+						perc = Math.round(100*cook/(cmpEat||cook))
+						perc = (if isNaN(perc) then '-' else perc+'%')
+						Dom.text perc
+					renderFlex()
+					renderStat tr("per meal"), !->
+						renderCurrency (m.spent||0)/(m.fed||1)
+					renderFlex()
+					Dom.div !->
+						Dom.style fontSize: '85%', textAlign: 'right'
+						Dom.text tr("ate %1 time|s",m.eat||0)
+						Dom.br()
+						Dom.text tr("served %1 plate|s",m.fed||0)
+						Dom.br()
+						Dom.text tr("cooked %1 time|s",m.cook||0)
+				else
+					Dom.text tr("Did not join dinner this month")
 	, (d) ->
 		-d.key()
 	#render settle, times cooked, platessorved, meals eaten.
@@ -555,7 +540,7 @@ exports.render = !->
 
 	if what=='personalBalance'
 		id = Page.state.get("?id")
-		Page.setTitle tr("Balances of %1", Plugin.userName(id))
+		Page.setTitle tr("Balances of %1", App.userName(id))
 		renderPersonalBalance(id)
 		return
 
@@ -571,7 +556,7 @@ exports.render = !->
 
 		items = Obs.create()
 		# show last week, plus earlier days that have a cook
-		Ui.list !->
+		Obs.observe !->
 			for day in [today-1..today-7] by -1
 				renderDayItem day
 			Db.shared.dirty().observeEach 'days', (info) !->
@@ -584,12 +569,13 @@ exports.render = !->
 				Ui.emptyText tr("No earlier items") unless items.get()
 		return
 
-	if title = Plugin.title()
+	if title = App.title()
 		Dom.h2 !->
 			Dom.style margin: '6px 2px'
 			Dom.text title
 
-	Ui.list !->
+	# Ui.list !->
+	Obs.observe !->
 		Db.personal.observeEach 'open', (info) !->
 			day = 0|info.key()
 			if day < (today-1)
@@ -606,9 +592,9 @@ exports.render = !->
 		label: tr "History"
 		action: !-> Page.nav ['history']
 
-exports.renderConfig = exports.renderSettings = !->
+exports.renderSettings = !->
 	Dom.div !->
-		Dom.style Box: "inline middle", margin: '6px 0 10px'
+		Dom.style Box: "middle center"
 		Dom.div !->
 			Dom.text tr("Daily deadline: ")
 		require('datepicker.js').time
@@ -630,44 +616,44 @@ exports.renderConfig = exports.renderSettings = !->
 	userIds[u] = true for u of Db.shared?.get('defaults')
 	userIds[i] = true for i in getPluginUserIds()
 	for userId2, v of userIds then do (userId2) !->
-		Dom.div !->
-			Dom.style Box: "middle", padding: '8px'
-			Ui.avatar (Plugin.userAvatar userId2)
+		Form.row !->
+			Dom.style paddingRight: '0px'
 			Dom.div !->
-				Dom.style Flex: true, marginLeft: '8px'
-				Dom.text Plugin.userName(userId2)
-			Dom.div !->
-				Dom.style color: '#aaa', margin: '0 5px', border: '8px solid transparent'
-				if expanded.get(userId2)
-					Dom.style borderBottom: '8px solid #ccc', marginTop: '-8px'
-				else
-					Dom.style borderTop: '8px solid #ccc', marginBottom: '-8px'
-
-			Dom.onTap !->
-				expanded.modify(userId2, (v) -> if v then null else true)
-
-		Dom.div !->
-			Dom.style display: if expanded.get(userId2) then 'block' else 'none'
-			for dayName, index in dayNames then do (dayName, index) !->
+				Dom.style Box: "middle"
+				Ui.avatar (App.userAvatar userId2)
 				Dom.div !->
-					Dom.style Box: 'middle right', padding: '10px 0'
-					Dom.div dayName
-					state = defaults.get(userId2, index, 'eat')
+					Dom.style Flex: true, marginLeft: '8px'
+					Dom.text App.userName(userId2)
+				Dom.div !->
+					Dom.style color: '#aaa', margin: '0 13px', border: '8px solid transparent'
+					if expanded.get(userId2)
+						Dom.style borderBottom: '8px solid #ccc', marginTop: '-8px'
+					else
+						Dom.style borderTop: '8px solid #ccc', marginBottom: '-8px'
+
+				Dom.onTap !->
+					expanded.modify(userId2, (v) -> if v then null else true)
+
+			Dom.div !->
+				Dom.style display: if expanded.get(userId2) then 'block' else 'none'
+				for dayName, index in dayNames then do (dayName, index) !->
 					Dom.div !->
-						Dom.style Box: 'middle center', minWidth: '60px'
-						stateIcon state
-						plusIcon state
+						Dom.style Box: 'middle right', padding: '10px 0'
+						Dom.div dayName
+						state = defaults.get(userId2, index, 'eat')
+						Dom.div !->
+							Dom.style Box: 'middle center', minWidth: '45px'
+							stateIcon state
+							plusIcon state
 
-					Dom.onTap
-						cb: !->
-							defaults.modify userId2, index, 'eat', (state) ->
-								if !state? then 1 else if state>0 then 0 else null
-						longTap: !->
-							buttons = ['0', tr("No")]
-							buttons.push i, i for i in [1..4]
-							chosen = (val) !->
-								if val?
-									defaults.modify userId2, index, 'eat', (state) -> val+1
-							require('modal').show tr('Bringing guests?'), null, chosen, buttons
-
-		Form.sep()
+						Dom.onTap
+							cb: !->
+								defaults.modify userId2, index, 'eat', (state) ->
+									if !state? then 1 else if state>0 then 0 else null
+							longTap: !->
+								buttons = ['0', tr("No")]
+								buttons.push i, i for i in [1..4]
+								chosen = (val) !->
+									if val?
+										defaults.modify userId2, index, 'eat', (state) -> val+1
+								require('modal').show tr('Bringing guests?'), null, chosen, buttons

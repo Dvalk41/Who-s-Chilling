@@ -1,6 +1,7 @@
+Comments = require 'comments'
 Db = require 'db'
 Event = require 'event'
-Plugin = require 'plugin'
+App = require 'app'
 {tr} = require 'i18n'
 
 exports.onConfig = exports.onInstall = (config) !->
@@ -10,7 +11,7 @@ exports.onConfig = exports.onInstall = (config) !->
 
 		if config.defaults
 			offset = (new Date).getTimezoneOffset()
-			today = 0|((Plugin.time()-offset*60)/86400)
+			today = 0|((App.time()-offset*60)/86400)
 			log 'defaults saving'
 
 			# check which days have changed, add current day as starting point in 'd'
@@ -53,7 +54,7 @@ setTimers = (extraTime=0) !->
 	deadline = Db.shared.get 'deadline'
 	return unless deadline?
 
-	time = Plugin.time()
+	time = App.time()
 	dayStart = Math.floor(time/86400)*86400
 	for type,offset of {remind: -1800, deadline: 0, defaults: 0}
 		next = dayStart + deadline + offset
@@ -63,7 +64,7 @@ setTimers = (extraTime=0) !->
 exports.defaults = !->
 	# write defaults for the day over two weeks (take one day before and after for margin)
 	gud = require('util.js').getUTCDay
-	day = 0|(Plugin.time()/86400)
+	day = 0|(App.time()/86400)
 	writeDays = [day+13, day+14, day+15]
 	utcDays = [gud(writeDays[0]), gud(writeDays[1]), gud(writeDays[2])]
 	def = Db.shared.get('defaults')
@@ -77,7 +78,7 @@ exports.defaults = !->
 
 
 exports.remind = !->
-	day = 0|(Plugin.time()/86400)
+	day = 0|(App.time()/86400)
 	eat = Db.shared.get('days',day,'eat') || {}
 	remind = false
 	for userId, value of eat when value>0 or value>1000
@@ -87,17 +88,24 @@ exports.remind = !->
 
 	if remind
 		include = []
-		for userId in Plugin.userIds() when !eat[userId]? or eat[userId] is ''
+		for userId in App.userIds() when !eat[userId]? or eat[userId] is ''
 			include.push userId
 		if include.length
-			Event.create
-				text: tr 'Are you hungry/cooking? Deadline in 30m!'
-				unit: tr 'eat?'
+			Comments.post
+				legacyStore: day
+				s: 'remind'
+				pushText: tr 'Are you hungry/cooking? Deadline in 30m!'
+				path: '/'+day+'/'
 				for: include
+
+			# Event.create
+			# 	text: tr 'Are you hungry/cooking? Deadline in 30m!'
+			# 	unit: tr 'eat?'
+			# 	for: include
 	setTimers 300
 
 exports.deadline = !->
-	day = 0|(Plugin.time()/86400)
+	day = 0|(App.time()/86400)
 	cookId = Db.shared.get('days',day,'cook')
 	eaters = []
 	cnt = 0
@@ -130,7 +138,7 @@ exports.deadline = !->
 exports.client_eat = (day, newState, userId) !->
 	info = Db.shared.createRef 'days', day
 
-	userId = (0|userId) || Plugin.userId()
+	userId = (0|userId) || App.userId()
 	oldCookId = info.get('cook')
 	cookId = if newState<0 then (if oldCookId then oldCookId else userId) else (if oldCookId==userId then null else oldCookId)
 
@@ -142,33 +150,31 @@ exports.client_eat = (day, newState, userId) !->
 		Db.personal(cookId).set('open',day,true) if cookId and !info.get('cost')?
 
 	complaints = ""
-
-	if userId != Plugin.userId()
-		complaints += " "+tr("for %1",Plugin.userName(userId))
-
+	other = null
+	if userId != App.userId()
+		other = userId
+		complaints += 'other'
 	deadline = Db.shared.get 'deadline'
-	if deadline?
-		if Plugin.time() > day*86400+deadline+(if newState<0 then 3600 else 0) # extra hour to become cook
-			complaints += " "+tr("after the deadline")
+	if deadline? and App.time() > day*86400+deadline+(if newState<0 then 3600 else 0) # extra hour to become cook
+		complaints += 'deadline'
+	logComment day, complaints, null, null, other
 
-	if complaints
-		logComment day, 'stat'+userId, -> tr("changed status")+complaints
-
-
-logComment = (day,topic,cb) !->
-	comment =
-		t: 0|Plugin.time()
-		u: Plugin.userId()
+logComment = (day, topic, c1, c2, about) !->
+	systemComment =
+		t: 0|App.time()
+		u: App.userId()
+		a: about if about?
 		s: topic
+		c1: c1 if c1?
+		c2: c2 if c2?
 	comments = Db.shared.createRef("comments",day)
 	if max = 0|comments.get("max")
 		last = comments.get(max)
-		if last.t > comment.t-120 and last.u == comment.u and last.s == comment.s
+		if last.t > systemComment.t-120 and last.u == systemComment.u and last.s == systemComment.s
 			recycle = true
 	unless recycle
 		comments.set "max", ++max
-	if comment.c = cb(comment, if recycle then last else null)
-		comments.set max, comment
+	comments.set max, systemComment
 
 
 exports.client_cost = (day, value) !->
@@ -179,13 +185,4 @@ exports.client_cost = (day, value) !->
 	cookId = info.get('cook')
 	Db.personal(cookId).set('open',day,if value==null then true else null) if cookId
 
-	fc = require('util.js').formatCurrency
-	logComment day, 'cost', (newC, oldC) ->
-		oldValue = oldC._o if oldC
-		newC._o = oldValue
-		if oldValue?
-			tr "changed total cost from %1 to %2",
-				fc(oldValue)
-				if value? then fc(value) else "??"
-		else
-			tr "entered total cost: %1", if value? then fc(value) else "??"
+	if value isnt oldValue then logComment day, 'cost', value, oldValue

@@ -2,8 +2,8 @@ Dom = require 'dom'
 Form = require 'form'
 Obs = require 'obs'
 Page = require 'page'
-Plugin = require 'plugin'
-Colors = Plugin.colors()
+App = require 'app'
+Colors = App.colors()
 {tr} = require 'i18n'
 
 dayNames = [
