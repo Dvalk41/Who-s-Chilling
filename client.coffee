@@ -189,7 +189,7 @@ renderDayItem = (day) !->
 					fontSize: '80%'
 					fontWeight: 'normal'
 					color: if cnt or cookId then 'inherit' else '#aaa'
-				Dom.text if cookId then tr("%1 cooking for %2",App.userName(cookId),cnt) else tr("%1 hungry |person|people",cnt)
+				Dom.text if cookId then tr("%1 hosting for %2",App.userName(cookId),cnt) else tr("%1 bored/sober |person|people",cnt)
 
 		Event.renderBubble [day], style: marginLeft: '4px'
 		###
@@ -225,7 +225,7 @@ renderDayPage = (day) !->
 					tr("%1 changed total cost from #{fc(c.c2)} to #{fc(c.c1)}", c.user)
 				else
 					tr("%1 entered total cost #{fc(c.c1)}", c.user)
-			remind: (c) -> tr("Are you hungry/cooking? Deadline in 30m!")
+			remind: (c) -> tr("Are you Bored/Sober? Deadline in 30m!")
 
 	info = Db.shared.ref('days', day) || new Obs.Value(null,day)
 	userId = App.userId()
@@ -237,13 +237,13 @@ renderDayPage = (day) !->
 			sub: !->
 				state = getState(info, userId)
 				Dom.text if state<0
-						tr "Hungry, and I'm cooking"
+						tr "Sober/Bored, and I'm hosting"
 					else if state>0
-						tr "Hungry"
+						tr "Sober/Bored"
 					else if state is 0
-						tr "Not joining dinner"
+						tr "Not joining real nigga hours"
 					else
-						tr "Undecided"
+						tr "Not deciding, Pussy Boy"
 			icon: !->
 				stateIcon getState(info, userId)
 			onTap: !-> nextState info, userId
@@ -268,7 +268,7 @@ renderDayPage = (day) !->
 		Dom.style ChildMargin: 12
 		cookId = info.get('cook')
 		Form.label !->
-			Dom.text if cookId then tr("Chef %1", App.userName(cookId)) else tr("No chef yet")
+			Dom.text if cookId then tr("Chef %1", App.userName(cookId)) else tr("No host yet")
 		Form.row !->
 			Dom.style Box: 'middle'
 			if cookId
@@ -336,7 +336,7 @@ renderDayPage = (day) !->
 						evt.kill()
 				,true
 			else
-				Ui.bigButton tr("I'll cook!"), !->
+				Ui.bigButton tr("I'll host!"), !->
 					state = getState info,userId
 					setState info, userId, -Math.abs(state||1)
 
@@ -345,7 +345,7 @@ renderDayPage = (day) !->
 
 		count = Obs.create 0
 		Form.label !->
-			Dom.text tr("%1 hungry |person|people",count.get())
+			Dom.text tr("%1 Sober/Bored |person|people",count.get())
 
 		# Create a temporary observable that is merely used for it's sorting ability
 		tmpObs = null
@@ -442,11 +442,11 @@ renderBalances = !->
 				renderFlex()
 				Dom.div !->
 					Dom.style fontSize: '85%', textAlign: 'right'
-					Dom.text tr("ate %1 time|s",stat.get("eat")||0)
+					Dom.text tr("Chilled %1 time|s",stat.get("eat")||0)
 					Dom.br()
-					Dom.text tr("served %1 plate|s",stat.get("fed")||0)
+					Dom.text tr("%1 420",stat.get("fed")||0)
 					Dom.br()
-					Dom.text tr("cooked %1 time|s",stat.get("cook")||0)
+					Dom.text tr("Hosted %1 time|s",stat.get("cook")||0)
 
 			Dom.onTap !->
 				Page.nav  {0:"personalBalance", "?id": stat.key()}
@@ -516,13 +516,13 @@ renderPersonalBalance = (id) !->
 					renderFlex()
 					Dom.div !->
 						Dom.style fontSize: '85%', textAlign: 'right'
-						Dom.text tr("ate %1 time|s",m.eat||0)
+						Dom.text tr("Chilled %1 time|s",m.eat||0)
 						Dom.br()
-						Dom.text tr("served %1 plate|s",m.fed||0)
+						Dom.text tr(" %1 420(2)",m.fed||0)
 						Dom.br()
-						Dom.text tr("cooked %1 time|s",m.cook||0)
+						Dom.text tr("Hosted %1 time|s",m.cook||0)
 				else
-					Dom.text tr("Did not join dinner this month")
+					Dom.text tr("Did not join le chillings this month")
 	, (d) ->
 		-d.key()
 	#render settle, times cooked, platessorved, meals eaten.
