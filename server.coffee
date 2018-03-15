@@ -94,12 +94,12 @@ exports.remind = !->
 			Comments.post
 				legacyStore: day
 				s: 'remind'
-				pushText: tr 'Are you sober/bored? Deadline in je moeder!'
+				pushText: tr 'Are you Sober/Bored? Deadline in 30m!'
 				path: '/'+day+'/'
 				for: include
 
 			# Event.create
-			# 	text: tr 'Are you hungry/cooking? Deadline in 30m!'
+			# 	text: tr 'Are you Sober/Bored? Deadline in 30m!'
 			# 	unit: tr 'eat?'
 			# 	for: include
 	setTimers 300
@@ -117,18 +117,18 @@ exports.deadline = !->
 			eaters.push userId
 	if eaters.length==1
 		Event.create
-			text: tr 'Nobody else seems to be hungry. Too bad!'
+			text: tr 'Nobody else seems to be Sober. Too bad, Whoppa Blyat!'
 			unit: tr 'msg'
 			for: eaters
 	else if eaters.length>1
 		if cookId
 			Event.create
-				text: tr "Hey chef, dinner for #{cnt} please!"
+				text: tr "Hey host, chillings for #{cnt} please!"
 				unit: tr 'msg'
 				for: [cookId]
 		else
 			Event.create
-				text: tr "No chef yet. :( Will you feed the #{cnt} hungry?"
+				text: tr "No host yet. :( Will you intoxicate the #{cnt} sober?"
 				unit: tr 'eat?'
 				for: eaters
 	setTimers 300
