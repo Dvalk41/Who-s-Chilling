@@ -94,7 +94,7 @@ exports.remind = !->
 			Comments.post
 				legacyStore: day
 				s: 'remind'
-				pushText: tr 'Are you hungry/cooking? Deadline in 30m!'
+				pushText: tr 'Are you sober/bored? Deadline in je moeder!'
 				path: '/'+day+'/'
 				for: include
 
