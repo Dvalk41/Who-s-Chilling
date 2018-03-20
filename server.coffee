@@ -94,12 +94,12 @@ exports.remind = !->
 			Comments.post
 				legacyStore: day
 				s: 'remind'
-				pushText: tr 'Are you Sober/Bored? Deadline in 30m!'
+				pushText: tr 'Are you Sober/Bored? Deadline in 30m! Oh shiet!'
 				path: '/'+day+'/'
 				for: include
 
 			# Event.create
-			# 	text: tr 'Are you Sober/Bored? Deadline in 30m!'
+			# 	text: tr 'Are you Sober/Bored? Deadline in 30m! Oh shiet!'
 			# 	unit: tr 'eat?'
 			# 	for: include
 	setTimers 300
